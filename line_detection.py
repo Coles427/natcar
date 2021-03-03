@@ -111,28 +111,33 @@ while(True):
             green_led.off()
             blue_led.on()
             led_status = [0,0,1]
-            #motor_control = 50
+            motor_control_R = 50
+            motor_control_L = 20
         elif center_pos <= 110 and center_pos > 55:
             red_led.off()
             blue_led.off()
             green_led.on()
             led_status = [0,1,0]
-           # motor_control = 80
+            motor_control_R = 80
+            motor_control_L = 20
         elif center_pos > 110 and center_pos <=160:
             red_led.on()
             blue_led.off()
             green_led.off()
             led_status = [1,0,0]
-           # motor_control = 50
+            motor_control_R = 50
+            motor_control_L = 20
         else:
             red_led.off()
             blue_led.off()
             green_led.off()
             led_status = [0,0,0]
             print ("Line not detected")
-           # motor_control = 20
+            motor_control_R = 20
+            motor_control_L = 20
         print ("LED status is: RED", led_status[0], ", GREEN",
                     led_status[1], ", BLUE", led_status[2])
         print ("center_pos: " ,center_pos)
-      #  ch1 = timM.channel(1, Timer.PWM, pin=Pin("P7"), pulse_width_percent= motor_control)
+        ch1 = timM.channel(1, Timer.PWM, pin=Pin("P7"), pulse_width_percent= motor_control_R)
+        ch2 = timS.channel(1, Timer.PWM, pin=Pin("P6"), pulse_width_percent= motor_control_L)
         old_time = now  # reset clock
