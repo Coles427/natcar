@@ -1,0 +1,8 @@
+{
+  "ultra": false,
+  "speed": 80,
+  "white": {
+    "min": 165,
+    "max": 255
+  }
+}

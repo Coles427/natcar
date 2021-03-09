@@ -2,9 +2,23 @@
 #
 # Welcome to the OpenMV IDE! Click on the green run arrow button below to run the script!
 
-import sensor, image, time, pyb
+import sensor, image, time, pyb, os, utime
 from pyb import Pin, Timer,LED,USB_VCP
+from pid import PID
 
+import json
+
+f = open('config.json', 'r')
+c = json.loads(f.read())
+
+print("loaded config...")
+print("white min, max: " , [(c['white']["min"], c["white"]["max"])])
+print("Ultra sound enabled") if c["ultra"] else print("Ultra sound disabled")
+print("Speed is:" , c["speed"])
+
+f.close()
+
+pid1 = PID(p=0.07, i=0, imax=90)
 tim4 = Timer(4, freq=300) # Frequency in Hz
 # Generate a 2KHz square wave on TIM4 with 50%, 75% and 50% duty cycles on channels 1, 2 and 3 respectively.
 #ld = tim4.channel(2, Timer.PWM, pin=Pin("P8"), pulse_width_percent=0)
@@ -18,8 +32,8 @@ tim2 = Timer(2, freq = 300)
 rd = pyb.Pin("P1", pyb.Pin.OUT_PP)
 rd.low()
 rp = tim2.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width_percent = 0)
-speed=80
-white = [(169 , 255)]
+speed=c["speed"]
+white = [(c["white"]["min"] , c["white"]["max"])]
 roi1= (0,0,160,10)
 lroi=(0,0,10,120)
 rroi=(150,0,10,120)
@@ -33,22 +47,44 @@ sensor.set_auto_whitebal(False)         # must be turned off for color tracking
 clock = time.clock()                    # Create a clock object to track the FPS.
 usb = pyb.USB_VCP() #for debuging when not connected to IDE
 zeroCnt = 0
+
+startL = 0
+risingL = 1
+diffL = 0
+
+def callbackL(line):
+    global startL
+    global risingL
+    global diffL
+    try:
+        if(risingL == 1):
+            startL = utime.ticks_us()
+            risingL = 0
+        else:
+            timeL = utime.ticks_us()
+            diffL = utime.ticks_diff(timeL,startL)
+            risingL = 1
+    except Exception as e:
+        print(e)
+
+if c["ultra"]:
+    trigger = pyb.Pin(pyb.Pin.board.P2, pyb.Pin.OUT_PP)
+    echoL = pyb.Pin(pyb.Pin.board.P0, pyb.Pin.IN)
+    echoLIntR = pyb.ExtInt(echoL, pyb.ExtInt.IRQ_RISING_FALLING, pyb.Pin.PULL_NONE, callbackL)
+
 while(True):
     clock.tick()                        # Update the FPS clock.
     img = sensor.snapshot()             # Take a picture and return the image.
-    dmin=81
     midb=-1
     left=-1
     right=-1
     for blob in img.find_blobs(white, roi=roi1, pixels_threshold=4, area_threshold=4, merge=True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
-        d=blob.cx()-80
-        if (d<0):
-            d=-d
-        if(d<dmin):
-            dmin=d
-            midb=blob.cx()
+        Err=blob.cx()-80
+        output=pid1.get_pid(Err,1)
+        midb=0
+        print("output :", output)
     for blob in img.find_blobs(white, roi=lroi, pixels_threshold=4, area_threshold=4, merge=True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
@@ -69,23 +105,32 @@ while(True):
             move=5
         if right<left:
             move=4
-    elif (midb<50):
+    elif (output<-2.1):
         move=2
-    elif (midb<110):
-        move=1
-    else:
+    elif (output>2.1):
         move=3
+    else:
+        move = 1
 
     if stuck == 1:
         move = -1
         ld.high()
-        lp.pulse_width_percent(int(speed/2))
+        lp.pulse_width_percent(int(speed*2/3))
         rd.high()
-        rp.pulse_width_percent(int(speed/2))
-        print("Stuck, moving back")
+        rp.pulse_width_percent(int(speed*2/3))
         zeroCnt -= 1
         if zeroCnt < 1:
             stuck = 0
+
+    if c["ultra"]:
+        trigger.low()
+        pyb.delay(2)
+        trigger.high()
+        pyb.delay(50)
+        trigger.low()
+        distanceL = 0.0343 * diffL
+        if distanceL < 25 :
+            move = 2
     if move==0:
         ld.low()
         lp.pulse_width_percent(0)
