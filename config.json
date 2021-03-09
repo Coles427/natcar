@@ -4,5 +4,7 @@
   "white": {
     "min": 165,
     "max": 255
-  }
+  },
+  "dDist": 25,
+  "finish": true
 }

@@ -31,6 +31,8 @@ tim2 = Timer(2, freq = 300)
 #rd = tim2.channel(2, Timer.PWM, pin=Pin("P5"), pulse_width_percent = 0)
 rd = pyb.Pin("P1", pyb.Pin.OUT_PP)
 rd.low()
+buzz = pyb.Pin("P7", pyb.Pin.OUT_PP)
+buzz.low()
 rp = tim2.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width_percent = 0)
 speed=c["speed"]
 white = [(c["white"]["min"] , c["white"]["max"])]
@@ -126,6 +128,8 @@ if c["ultra"]:
 
 count = 0;
 while(True):
+    noBlobs = 0
+    bxCent = []
     clock.tick()                        # Update the FPS clock.
     img = sensor.snapshot()             # Take a picture and return the image.
     midb=-1
@@ -138,6 +142,8 @@ while(True):
         output=pid1.get_pid(Err,1)
         midb=0
         print("output :", output)
+        bxCent.append(blob.cx())
+        noBlobs += 1
     for blob in img.find_blobs(white, roi=lroi, pixels_threshold=4, area_threshold=4, merge=True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
@@ -170,6 +176,14 @@ while(True):
         pyb.delay(200)
         setMove(0)
 
+    print("found in center region:", noBlobs)
+    if noBlobs == 3 and c["finish"]:
+        if bxCent[2]-bxCent[1] > (bxCent[1] - bxCent[0])*0.9 and bxCent[2]-bxCent[1] < (bxCent[1] - bxCent[0])*1.1: #if there are 3 equally spaced blobs
+            setMove(0)
+            buzz.high()
+            pyb.delay(200)
+            buzz.low()
+            break
     if c["ultra"] and count == 5:
         trigger.low()
         pyb.delay(2)
