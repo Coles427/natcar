@@ -34,7 +34,7 @@ rd.low()
 buzz = pyb.Pin("P7", pyb.Pin.OUT_PP)
 buzz.low()
 rp = tim2.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width_percent = 0)
-speed=c["speed"]
+maxSpeed=c["speed"]
 white = [(c["white"]["min"] , c["white"]["max"])]
 maxDetect = c["dDist"]
 roi1= (0,0,160,10)
@@ -54,17 +54,46 @@ zeroCnt = 0
 startL = 0
 risingL = 1
 diffL = 0
+inRow = 50
+lastMove = -1
 
 def setMove(move):
     global zeroCnt
     global stuck
+    global inRow
+    global lastMove
+    left
+    if move == 1 and lastMove == 1:
+        if inRow < 98:
+            inRow += 2
+    if move == 4 or move == 5:
+        if lastMove == 1:
+            inRow = 75
+        else:
+            inRow += 1
+    if move == 2 or move == 3:
+        if inRow > 75:
+            inRow -= 1
+        else:
+            inRow += 1
+    if inRow < 0 :
+        inRow = 0
+    print("in row:", inRow)
+    if inRow < maxSpeed:
+        speed = int(maxSpeed * (inRow/100))
+    else:
+        speed = maxSpeed
+
+    print("speed is:", speed)
     if move==0:
+        inRow = int(inRow / 2)
+        speed = 0 if inRow < 10 else int(maxSpeed * (inRow/100))
         ld.low()
-        lp.pulse_width_percent(0)
+        lp.pulse_width_percent(speed)
         rd.low()
-        rp.pulse_width_percent(0)
+        rp.pulse_width_percent(speed)
         zeroCnt += 1
-        if zeroCnt > 19:
+        if zeroCnt > 10:
             stuck = 1
     if move==1:
         ld.low()
@@ -74,37 +103,45 @@ def setMove(move):
         zeroCnt = 0
     if move==2:
         ld.low()
-        lp.pulse_width_percent(0)
+        lp.pulse_width_percent(int(speed / 2))
         rd.low()
-        rp.pulse_width_percent(int(speed/3))
+        rp.pulse_width_percent(speed)
         zeroCnt = 0
     if move==3:
         ld.low()
-        lp.pulse_width_percent(int(speed/3))
+        lp.pulse_width_percent(speed)
         rd.low()
-        rp.pulse_width_percent(0)
+        rp.pulse_width_percent(int(speed / 2))
         zeroCnt = 0
     if move==4:
         ld.high()
-        lp.pulse_width_percent(int(speed/3))
+        lp.pulse_width_percent(int(speed/4))
         rd.low()
-        rp.pulse_width_percent(int(speed/3))
+        rp.pulse_width_percent(speed)
         zeroCnt = 0
     if move==5:
         ld.low()
-        lp.pulse_width_percent(int(speed/3))
+        lp.pulse_width_percent(speed)
         rd.low()
-        rp.pulse_width_percent(0)
+        rp.pulse_width_percent(int(speed/4))
         zeroCnt = 0
     if move==6:
         print("backing up")
         ld.high()
-        lp.pulse_width_percent(int(speed/2))
+        lp.pulse_width_percent(int(maxSpeed/2))
         rd.high()
-        rp.pulse_width_percent(int(speed/2))
+        rp.pulse_width_percent(int(maxSpeed/2))
         zeroCnt = 0
         stuck = 0
-
+    if move==7:
+        print("backing up")
+        ld.high()
+        lp.pulse_width_percent(0)
+        rd.high()
+        rp.pulse_width_percent(0)
+        zeroCnt = 0
+        stuck = 0
+    lastMove = move
 
 def callbackL(line):
     global startL
@@ -139,7 +176,7 @@ while(True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
         Err=blob.cx()-80
-        output=pid1.get_pid(Err,1)
+        output=pid1.get_pid(Err,.8)
         midb=0
         print("output :", output)
         bxCent.append(blob.cx())
@@ -164,9 +201,9 @@ while(True):
             move=5
         if right<left:
             move=4
-    elif (output<-2.1):
+    elif (output<-1.2):
         move=2
-    elif (output>2.1):
+    elif (output>1.2):
         move=3
     else:
         move = 1
@@ -179,7 +216,7 @@ while(True):
     print("found in center region:", noBlobs)
     if noBlobs == 3 and c["finish"]:
         if bxCent[2]-bxCent[1] > (bxCent[1] - bxCent[0])*0.9 and bxCent[2]-bxCent[1] < (bxCent[1] - bxCent[0])*1.1: #if there are 3 equally spaced blobs
-            setMove(0)
+            setMove(7)
             buzz.high()
             pyb.delay(200)
             buzz.low()
