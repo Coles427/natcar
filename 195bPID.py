@@ -31,9 +31,12 @@ tim2 = Timer(2, freq = 300)
 #rd = tim2.channel(2, Timer.PWM, pin=Pin("P5"), pulse_width_percent = 0)
 rd = pyb.Pin("P1", pyb.Pin.OUT_PP)
 rd.low()
+buzz = pyb.Pin("P7", pyb.Pin.OUT_PP)
+buzz.low()
 rp = tim2.channel(3, Timer.PWM, pin=Pin("P4"), pulse_width_percent = 0)
-speed=c["speed"]
+maxSpeed=c["speed"]
 white = [(c["white"]["min"] , c["white"]["max"])]
+maxDetect = c["dDist"]
 roi1= (0,0,160,10)
 lroi=(0,0,10,120)
 rroi=(150,0,10,120)
@@ -51,6 +54,94 @@ zeroCnt = 0
 startL = 0
 risingL = 1
 diffL = 0
+inRow = 50
+lastMove = -1
+
+def setMove(move):
+    global zeroCnt
+    global stuck
+    global inRow
+    global lastMove
+    left
+    if move == 1 and lastMove == 1:
+        if inRow < 98:
+            inRow += 2
+    if move == 4 or move == 5:
+        if lastMove == 1:
+            inRow = 75
+        else:
+            inRow += 1
+    if move == 2 or move == 3:
+        if inRow > 75:
+            inRow -= 1
+        else:
+            inRow += 1
+    if inRow < 0 :
+        inRow = 0
+    print("in row:", inRow)
+    if inRow < maxSpeed:
+        speed = int(maxSpeed * (inRow/100))
+    else:
+        speed = maxSpeed
+
+    print("speed is:", speed)
+    if move==0:
+        inRow = int(inRow / 2)
+        speed = 0 if inRow < 10 else int(maxSpeed * (inRow/100))
+        ld.low()
+        lp.pulse_width_percent(speed)
+        rd.low()
+        rp.pulse_width_percent(speed)
+        zeroCnt += 1
+        if zeroCnt > 10:
+            stuck = 1
+    if move==1:
+        ld.low()
+        lp.pulse_width_percent(speed)
+        rd.low()
+        rp.pulse_width_percent(speed)
+        zeroCnt = 0
+    if move==2:
+        ld.low()
+        lp.pulse_width_percent(int(speed / 2))
+        rd.low()
+        rp.pulse_width_percent(speed)
+        zeroCnt = 0
+    if move==3:
+        ld.low()
+        lp.pulse_width_percent(speed)
+        rd.low()
+        rp.pulse_width_percent(int(speed / 2))
+        zeroCnt = 0
+    if move==4:
+        ld.high()
+        lp.pulse_width_percent(int(speed/4))
+        rd.low()
+        rp.pulse_width_percent(speed)
+        zeroCnt = 0
+    if move==5:
+        ld.low()
+        lp.pulse_width_percent(speed)
+        rd.low()
+        rp.pulse_width_percent(int(speed/4))
+        zeroCnt = 0
+    if move==6:
+        print("backing up")
+        ld.high()
+        lp.pulse_width_percent(int(maxSpeed/2))
+        rd.high()
+        rp.pulse_width_percent(int(maxSpeed/2))
+        zeroCnt = 0
+        stuck = 0
+    if move==7:
+        print("backing up")
+        ld.high()
+        lp.pulse_width_percent(0)
+        rd.high()
+        rp.pulse_width_percent(0)
+        zeroCnt = 0
+        stuck = 0
+    lastMove = move
 
 def callbackL(line):
     global startL
@@ -72,7 +163,10 @@ if c["ultra"]:
     echoL = pyb.Pin(pyb.Pin.board.P0, pyb.Pin.IN)
     echoLIntR = pyb.ExtInt(echoL, pyb.ExtInt.IRQ_RISING_FALLING, pyb.Pin.PULL_NONE, callbackL)
 
+count = 0;
 while(True):
+    noBlobs = 0
+    bxCent = []
     clock.tick()                        # Update the FPS clock.
     img = sensor.snapshot()             # Take a picture and return the image.
     midb=-1
@@ -82,9 +176,11 @@ while(True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
         Err=blob.cx()-80
-        output=pid1.get_pid(Err,1)
+        output=pid1.get_pid(Err,.8)
         midb=0
         print("output :", output)
+        bxCent.append(blob.cx())
+        noBlobs += 1
     for blob in img.find_blobs(white, roi=lroi, pixels_threshold=4, area_threshold=4, merge=True):
         img.draw_rectangle(blob.rect(), color=0)
         img.draw_cross(blob.cx(), blob.cy(),color=0,size=4,thickness=1)
@@ -105,75 +201,57 @@ while(True):
             move=5
         if right<left:
             move=4
-    elif (output<-2.1):
+    elif (output<-1.2):
         move=2
-    elif (output>2.1):
+    elif (output>1.2):
         move=3
     else:
         move = 1
 
     if stuck == 1:
-        move = -1
-        ld.high()
-        lp.pulse_width_percent(int(speed*2/3))
-        rd.high()
-        rp.pulse_width_percent(int(speed*2/3))
-        zeroCnt -= 1
-        if zeroCnt < 1:
-            stuck = 0
+        setMove(6)
+        pyb.delay(200)
+        setMove(0)
 
-    if c["ultra"]:
+    print("found in center region:", noBlobs)
+    if noBlobs == 3 and c["finish"]:
+        if bxCent[2]-bxCent[1] > (bxCent[1] - bxCent[0])*0.9 and bxCent[2]-bxCent[1] < (bxCent[1] - bxCent[0])*1.1: #if there are 3 equally spaced blobs
+            setMove(7)
+            buzz.high()
+            pyb.delay(200)
+            buzz.low()
+            break
+    if c["ultra"] and count == 5:
         trigger.low()
         pyb.delay(2)
         trigger.high()
         pyb.delay(50)
         trigger.low()
         distanceL = 0.0343 * diffL
-        if distanceL < 25 :
-            move = 2
+        count = 0
+        if distanceL < maxDetect :
+            print("object detected at distance:", distanceL)
+            setMove(2)
+            pyb.delay(1000)
+            setMove(1)
+            pyb.delay(400)
+            setMove(3)
+            pyb.delay(1500)
+            setMove(1)
+            pyb.delay(200)
+            setMove(0)
     if move==0:
-        ld.low()
-        lp.pulse_width_percent(0)
-        rd.low()
-        rp.pulse_width_percent(0)
-        zeroCnt += 1
-        if zeroCnt > 20:
-            stuck = 1
+        setMove(0)
     if move==1:
-        started = 1
-        ld.low()
-        lp.pulse_width_percent(speed)
-        rd.low()
-        rp.pulse_width_percent(speed)
-        zeroCnt = 0
+        setMove(1)
     if move==2:
-        started = 1
-        ld.low()
-        lp.pulse_width_percent(0)
-        rd.low()
-        rp.pulse_width_percent(int(speed/3))
-        zeroCnt = 0
+        setMove(2)
     if move==3:
-        started = 1
-        ld.low()
-        lp.pulse_width_percent(int(speed/3))
-        rd.low()
-        rp.pulse_width_percent(0)
-        zeroCnt = 0
+        setMove(3)
     if move==4:
-        started = 1
-        ld.high()
-        lp.pulse_width_percent(int(speed/3))
-        rd.low()
-        rp.pulse_width_percent(int(speed/3))
-        zeroCnt = 0
+        setMove(4)
     if move==5:
-        started = 1
-        ld.low()
-        lp.pulse_width_percent(int(speed/3))
-        rd.low()
-        rp.pulse_width_percent(0)
-        zeroCnt = 0
+        setMove(5)
     print(move,clock.fps())                  # Note: OpenMV Cam runs about half as fast when connected
                                         # to the IDE. The FPS should increase once disconnected.
-
+    count += 1

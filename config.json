@@ -2,7 +2,9 @@
   "ultra": false,
   "speed": 80,
   "white": {
-    "min": 165,
+    "min": 140,
     "max": 255
-  }
+  },
+  "dDist": 25,
+  "finish": true
 }
